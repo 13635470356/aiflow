@@ -1,0 +1,62 @@
+{
+  "name": "quick",
+  "description": "小改动：claude 实现 → codex 审核 → 你确认（失败则修复再审，最多 2 轮）",
+  "roles": {
+    "dev": "@main",
+    "reviewer": "codex"
+  },
+  "steps": [
+    {
+      "id": "impl",
+      "title": "实现",
+      "type": "agent",
+      "role": "dev",
+      "mode": "edit",
+      "timeoutMin": 30,
+      "prompt": [
+        "完成以下改动，保持改动最小，完成后列出改动文件和说明：",
+        "{{task}}"
+      ]
+    },
+    {
+      "id": "loop",
+      "title": "审核 / 修复",
+      "type": "loop",
+      "max": 2,
+      "until": "has('review', 'VERDICT: PASS')",
+      "steps": [
+        {
+          "id": "review",
+          "title": "审核",
+          "type": "agent",
+          "role": "reviewer",
+          "ask": false,
+          "prompt": [
+            "用 git diff 审核刚才针对以下需求的改动，不要修改文件。列出问题，最后一行写 VERDICT: PASS 或 VERDICT: FAIL。",
+            "需求：{{task}}"
+          ],
+          "artifact": "代码检查报告"
+        },
+        {
+          "id": "gate",
+          "title": "你确认",
+          "type": "approve",
+          "review": "review",
+          "when": "has('review', 'VERDICT: FAIL')"
+        },
+        {
+          "id": "fix",
+          "title": "修复",
+          "type": "agent",
+          "role": "dev",
+          "mode": "edit",
+          "when": "has('review', 'VERDICT: FAIL')",
+          "prompt": [
+            "按以下审核意见修复：",
+            "{{steps.review.output}}"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,154 @@
+{
+  "name": "default",
+  "description": "深度访谈 → 交叉理解 → 需求定稿（你拍板）→ 实施方案（你拍板）→ 前后端在独立 worktree 并行开发 → 审核/修复循环",
+  "askUser": true,
+  "roles": {
+    "main": "@main",
+    "interviewer": "claude",
+    "analyst2": "agy",
+    "longTask": "claude",
+    "frontend": "agy",
+    "reviewer": "codex"
+  },
+  "steps": [
+    {
+      "id": "interview",
+      "title": "需求深度访谈（你直接对话）",
+      "type": "interactive",
+      "role": "interviewer",
+      "when": "confirm:需求需要先做深度访谈吗？（已有清晰需求文档可选\"否\"）",
+      "prompt": [
+        "你是资深产品经理兼架构师。请结合下面的初始需求、需求素材（如有）和当前项目代码，对需求方做深度访谈：",
+        "- 每轮只问 1~3 个最关键的问题，优先问会改变方案的问题，给出选项和你的推荐；",
+        "- 主动暴露隐含假设、边界情况、非功能需求（性能/安全/兼容）、验收标准；",
+        "- 有原型/设计稿时，逐个页面确认交互细节；",
+        "- 直到需求方说\"可以了\"再停止。",
+        "最后整理成访谈纪要（Markdown）：已确认的决定、功能清单、交互要点、非功能需求、验收标准、遗留问题。",
+        "",
+        "初始需求：",
+        "{{task}}"
+      ]
+    },
+    {
+      "id": "understand",
+      "title": "需求理解（交叉）",
+      "type": "parallel",
+      "roles": ["main", "analyst2"],
+      "prompt": [
+        "你是资深需求分析师。阅读需求、需求素材（如有，原型图要逐张看）和当前项目代码，只做分析，不要修改任何文件。按以下结构输出 Markdown：",
+        "1. 需求复述  2. 功能点清单（含每个页面/接口）  3. 涉及的现有模块/文件  4. 技术方案建议（前端/后端分开）  5. 风险与不确定点",
+        "",
+        "需求：{{task}}",
+        "",
+        "访谈纪要（为空则以需求为准）：",
+        "{{steps.interview.output}}"
+      ]
+    },
+    {
+      "id": "spec",
+      "title": "需求定稿",
+      "type": "agent",
+      "role": "main",
+      "prompt": [
+        "下面是需求、访谈纪要，以及两个不同 AI 对同一需求的独立分析。请交叉验证：找出共识、分歧（给出判断）和两者都遗漏的点。",
+        "然后输出最终《需求规格说明（定稿）》（Markdown），只写需求不写技术实现：背景与目标、范围（做/不做）、用户角色、功能清单（每项写清输入/输出/规则）、页面与交互（对照原型逐页说明）、数据字段、非功能需求、验收标准（可测试的条目）、已确认的决定。",
+        "不要修改任何文件。",
+        "",
+        "需求：{{task}}",
+        "访谈纪要：{{steps.interview.output}}",
+        "两份分析：",
+        "{{steps.understand.output}}",
+        "",
+        "需求方对上一版的修改意见（为空则忽略）：{{feedback}}"
+      ]
+    },
+    { "id": "gate-spec", "title": "你来拍板需求定稿", "type": "approve", "review": "spec" },
+    { "id": "save-spec", "title": "保存需求定稿", "type": "write", "from": "spec", "to": "docs/aiflow/SPEC.md", "artifact": "需求定稿" },
+    {
+      "id": "plan",
+      "title": "实施方案",
+      "type": "agent",
+      "role": "main",
+      "prompt": [
+        "根据 docs/aiflow/SPEC.md（需求定稿）和当前项目代码，输出《实施方案》（Markdown）：架构与模块划分、后端任务清单、前端任务清单、接口定义、数据结构与数据库变更、关键参数与配置、测试方案。",
+        "重要：前端和后端会由两位工程师在各自独立的代码副本里【同时】开发，彼此看不到对方的代码。因此接口定义必须完整、精确（路径、方法、请求/响应字段、错误码、分页规则），前后端各自要改哪些文件要分清，尽量不要让两边改同一个文件。",
+        "如果本需求不涉及前端，在文档开头单独写一行：无前端改动。不要修改任何文件。",
+        "",
+        "需求方对上一版方案的修改意见（为空则忽略）：{{feedback}}"
+      ]
+    },
+    { "id": "gate-plan", "title": "你来拍板实施方案", "type": "approve", "review": "plan" },
+    { "id": "save-plan", "title": "保存实施方案", "type": "write", "from": "plan", "to": "docs/aiflow/PLAN.md", "artifact": "实施方案" },
+    {
+      "id": "impl",
+      "title": "前后端并行开发（独立 worktree）",
+      "type": "parallel",
+      "isolation": "worktree",
+      "steps": [
+        {
+          "id": "impl-core",
+          "title": "后端 / 核心实现",
+          "role": "longTask",
+          "mode": "edit",
+          "timeoutMin": 90,
+          "prompt": [
+            "严格按照 docs/aiflow/PLAN.md 完成【后端/核心逻辑】的编码，需求细节见 docs/aiflow/SPEC.md。",
+            "前端由另一位工程师同时开发，你看不到他的代码：严格按方案里的接口定义实现，不要修改前端文件。",
+            "完成后输出：改动文件列表、关键实现说明、与方案不一致的地方、未完成事项。"
+          ]
+        },
+        {
+          "id": "impl-frontend",
+          "title": "前端实现",
+          "role": "frontend",
+          "mode": "edit",
+          "timeoutMin": 60,
+          "when": "!has('plan', '无前端改动')",
+          "prompt": [
+            "严格按照 docs/aiflow/PLAN.md 完成【前端】的编码，需求细节见 docs/aiflow/SPEC.md，界面以需求素材里的原型/设计稿为准。",
+            "后端由另一位工程师同时开发，你看不到他的代码：严格按方案里的接口定义对接，不要修改后端文件。",
+            "完成后输出：改动文件列表、关键实现说明、与方案不一致的地方、未完成事项。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "review-loop",
+      "title": "审核 / 修复循环",
+      "type": "loop",
+      "max": 3,
+      "until": "has('review', 'VERDICT: PASS')",
+      "steps": [
+        {
+          "id": "review",
+          "title": "代码检查",
+          "type": "agent",
+          "role": "reviewer",
+          "ask": false,
+          "artifact": "代码检查报告",
+          "prompt": [
+            "你是严格的代码审核者。对照 docs/aiflow/SPEC.md（需求定稿）和 docs/aiflow/PLAN.md（实施方案），审核当前工作区的全部改动（用 git status 和 git diff 查看，注意新文件）。不要修改任何文件。",
+            "重点：需求和验收标准是否全部覆盖、前后端接口是否一致、参数/配置/默认值、边界与错误处理、安全、明显 bug。",
+            "按【必须修复】【建议修改】【可忽略】三级列出问题，每条给出文件位置和修改建议。",
+            "最后一行必须是 VERDICT: PASS（没有必须修复的问题）或 VERDICT: FAIL。",
+            "需求方补充意见（为空则忽略）：{{feedback}}"
+          ]
+        },
+        { "id": "gate-review", "title": "你确认要修哪些", "type": "approve", "review": "review", "when": "has('review', 'VERDICT: FAIL')" },
+        {
+          "id": "fix",
+          "title": "按审核意见修复",
+          "type": "agent",
+          "role": "main",
+          "mode": "edit",
+          "timeoutMin": 60,
+          "when": "has('review', 'VERDICT: FAIL')",
+          "prompt": [
+            "以下是经需求方确认的审核意见（第 {{iter}} 轮），逐条修复【必须修复】和【建议修改】，完成后列出每条的处理结果：",
+            "{{steps.review.output}}"
+          ]
+        }
+      ]
+    }
+  ]
+}

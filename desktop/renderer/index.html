@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>aiflow</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="favicon.png">
+</head>
+<body>
+  <div class="app">
+    <aside class="nav">
+      <div class="brand">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="6" cy="12" r="3" fill="currentColor"/><circle cx="18" cy="6" r="2.5" fill="currentColor" opacity=".7"/><circle cx="18" cy="18" r="2.5" fill="currentColor" opacity=".7"/><path d="M8.6 10.6 15.8 7M8.6 13.4l7.2 3.6" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
+        <span>aiflow</span>
+      </div>
+      <nav>
+        <button data-page="run" class="active"><span class="ico">▶</span>运行<span class="nav-badge" id="nav-running" hidden></span></button>
+        <button data-page="workflows"><span class="ico">⇄</span>工作流</button>
+        <button data-page="schedules"><span class="ico">⏰</span>定时</button>
+        <button data-page="history"><span class="ico">◷</span>记录</button>
+        <button data-page="tools"><span class="ico">⚙</span>工具</button>
+        <button data-page="stats"><span class="ico">▤</span>统计</button>
+        <button data-page="settings"><span class="ico">≡</span>设置</button>
+      </nav>
+      <div class="project" id="project-box" title="点击切换项目文件夹">
+        <div class="project-label">项目文件夹</div>
+        <div class="project-name" id="project-name">未选择</div>
+        <div class="project-path" id="project-path"></div>
+      </div>
+    </aside>
+
+    <main>
+      <!-- 运行 -->
+      <section class="page" id="page-run">
+        <header class="page-h">
+          <div>
+            <h1>任务</h1>
+            <p class="sub">可以同时运行多个任务：不同项目并行，同一项目自动排队。需要你决定时会弹窗。</p>
+          </div>
+          <div class="run-status" id="run-status"></div>
+        </header>
+
+        <div class="card run-form" id="run-form">
+          <div class="form-head" id="form-head">
+            <b>新建任务</b>
+            <button class="link" id="form-toggle">收起</button>
+          </div>
+          <div id="form-body" class="form-body">
+            <div class="row">
+              <label class="field grow">
+                <span>项目文件夹</span>
+                <div class="row" style="gap:6px;align-items:stretch">
+                  <input type="text" id="run-cwd" class="grow" placeholder="D:\code\my-app">
+                  <button class="btn" id="run-cwd-pick">选择…</button>
+                </div>
+              </label>
+              <label class="field grow">
+                <span>工作流</span>
+                <select id="run-wf"></select>
+              </label>
+            </div>
+            <div class="wf-roles" id="run-wf-roles"></div>
+            <label class="field">
+              <span>需求</span>
+              <textarea id="run-task" rows="3" placeholder="描述你要做的功能或改动，例如：给后台用户列表加一个导出 Excel 的按钮，最多导出 1 万行"></textarea>
+            </label>
+            <div class="field">
+              <span>需求素材 <small style="font-weight:400">（可选：PRD、Word/PPT/Excel、PDF、原型截图，或 Confluence / Figma / 网页链接）</small></span>
+              <div class="dropzone" id="inputs-zone">
+                <div class="inputs-list" id="inputs-list"></div>
+                <div class="inputs-actions">
+                  <button class="btn small" id="inputs-add-file">＋ 添加文件</button>
+                  <button class="btn small" id="inputs-add-link">＋ 添加链接</button>
+                  <span class="hint-s">也可以把文件拖到这里</span>
+                </div>
+                <input type="file" id="inputs-file" multiple hidden>
+              </div>
+            </div>
+            <div class="row between">
+              <div class="opts">
+                <label class="check"><input type="checkbox" id="run-dry"> 只预览每步的调用命令（不执行）</label>
+                <label class="check"><input type="checkbox" id="run-auto"> 无人值守（自动通过拍板，跳过需要对话的步骤）</label>
+              </div>
+              <div class="btns">
+                <button class="btn" id="run-schedule">设为定时任务…</button>
+                <button class="btn primary" id="run-start">开始运行</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="run-body" id="run-body">
+          <div class="left-col">
+            <div class="card jobs">
+              <div class="card-h">任务列表</div>
+              <div id="job-list" class="job-list"><div class="empty" style="padding:16px">还没有任务</div></div>
+            </div>
+            <div class="card timeline">
+              <div class="card-h" id="timeline-h">步骤</div>
+              <div id="timeline-host" class="timeline-host"></div>
+            </div>
+          </div>
+          <div class="card console">
+            <div class="job-head" id="job-head"></div>
+            <div id="console-host" class="console-host"><div class="empty">选择左侧的任务查看进度</div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 定时 -->
+      <section class="page" id="page-schedules" hidden>
+        <header class="page-h">
+          <div>
+            <h1>定时任务</h1>
+            <p class="sub" id="sched-sub">到点自动提交为一个任务。需要 aiflow 开着（关闭窗口会留在托盘），或在命令行运行 aiflow scheduler。</p>
+          </div>
+          <button class="btn primary" id="sched-new">新建定时任务</button>
+        </header>
+        <div id="sched-list" class="sched-list"></div>
+        <div class="card">
+          <div class="card-h">调度日志</div>
+          <div id="sched-log" class="sched-log"></div>
+        </div>
+      </section>
+
+      <!-- 记录 -->
+      <section class="page" id="page-history" hidden>
+        <header class="page-h">
+          <div>
+            <h1>运行记录</h1>
+            <p class="sub">当前项目的历次运行：需求素材、每一步 agent 的输入输出、需求定稿、实施方案、代码检查和代码变更。</p>
+          </div>
+          <button class="btn" id="history-refresh">刷新</button>
+        </header>
+        <div class="wf-layout">
+          <div class="card wf-list" id="history-list"></div>
+          <div class="card wf-detail" id="history-detail"><div class="empty">选择左侧的一次运行</div></div>
+        </div>
+      </section>
+
+      <!-- 工作流 -->
+      <section class="page" id="page-workflows" hidden>
+        <header class="page-h">
+          <div>
+            <h1>工作流</h1>
+            <p class="sub">改角色分工只需在下拉框换工具；项目工作流优先于用户工作流，用户工作流优先于内置。</p>
+          </div>
+          <button class="btn" id="wf-new">新建工作流</button>
+        </header>
+        <div class="wf-layout">
+          <div class="card wf-list" id="wf-list"></div>
+          <div class="card wf-detail" id="wf-detail"><div class="empty">选择左侧的工作流</div></div>
+        </div>
+      </section>
+
+      <!-- 工具 -->
+      <section class="page" id="page-tools" hidden>
+        <header class="page-h">
+          <div>
+            <h1>AI 工具</h1>
+            <p class="sub">子 agent 是真实的 CLI，会加载它自己的 skill、插件、MCP 和规则文件。</p>
+          </div>
+          <button class="btn primary" id="tools-detect">重新检测</button>
+        </header>
+        <div class="card"><table class="tbl" id="tools-table"></table></div>
+      </section>
+
+      <!-- 统计 -->
+      <section class="page" id="page-stats" hidden>
+        <header class="page-h">
+          <div>
+            <h1>统计</h1>
+            <p class="sub">用来判断哪个工具更适合哪个角色。追问 = 子 agent 向你提问后重跑的次数。</p>
+          </div>
+          <select id="stats-days"><option value="7">最近 7 天</option><option value="30" selected>最近 30 天</option><option value="90">最近 90 天</option></select>
+        </header>
+        <div id="stats-body"></div>
+      </section>
+
+      <!-- 设置 -->
+      <section class="page" id="page-settings" hidden>
+        <header class="page-h">
+          <div>
+            <h1>设置</h1>
+            <p class="sub" id="settings-path"></p>
+          </div>
+          <button class="btn primary" id="settings-save">保存</button>
+        </header>
+        <div class="card form-grid">
+          <div class="section-t" style="margin:0">运行与后台</div>
+          <div class="row">
+            <label class="field" style="width:220px"><span>同时运行的任务上限</span><input type="number" id="set-max" min="1" max="10"></label>
+            <div class="grow" style="display:flex;flex-direction:column;gap:8px;padding-bottom:6px">
+              <label class="check desktop-only"><input type="checkbox" id="set-tray"> 关闭窗口时最小化到托盘（有定时任务或任务在运行时）</label>
+              <label class="check desktop-only"><input type="checkbox" id="set-login"> 开机自动启动（在托盘里后台运行，保证定时任务按时执行）</label>
+            </div>
+          </div>
+        </div>
+        <div class="card form-grid">
+          <div class="section-t" style="margin:0">集成（用于自动读取需求链接；不配置也能用，链接会交给子 agent 用它自己的 MCP 访问）</div>
+          <div class="row">
+            <label class="field grow"><span>Confluence 地址（可选）</span><input type="text" id="set-conf-base" placeholder="https://xxx.atlassian.net/wiki 或公司内网地址"></label>
+            <label class="field grow"><span>Confluence 邮箱（云版填写；内网版留空）</span><input type="text" id="set-conf-email" placeholder="you@company.com"></label>
+            <label class="field grow"><span>Confluence 令牌</span><input type="password" id="set-conf-token" placeholder="API token / 个人访问令牌"></label>
+          </div>
+          <div class="row">
+            <label class="field grow"><span>Figma 个人访问令牌</span><input type="password" id="set-figma-token" placeholder="figd_..."></label>
+            <div class="grow"><small style="color:var(--text-3)">令牌只保存在本机 %USERPROFILE%\.aiflow\config.json。Figma 链接会导出画板为 PNG，供子 agent 查看原型。</small></div>
+          </div>
+        </div>
+        <div class="card form-grid">
+          <label class="field"><span>默认超时（分钟）</span><input type="number" id="set-timeout" min="1" max="600"></label>
+          <label class="field"><span>覆盖内置工具（overrides）</span>
+            <textarea id="set-overrides" rows="8" spellcheck="false" class="mono"></textarea>
+            <small>例：{"codex": {"args": ["exec", "-m", "模型名", "{{EDIT}}", "--skip-git-repo-check", "-"]}}</small>
+          </label>
+          <label class="field"><span>自定义工具（custom）</span>
+            <textarea id="set-custom" rows="10" spellcheck="false" class="mono"></textarea>
+            <small>同一个 CLI 可以配成不同模型的"虚拟工具"，保存后到"工具"页重新检测。</small>
+          </label>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="modal-root"></div>
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="vendor/marked.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,290 @@
+{
+  "name": "team",
+  "description": "知人善任：Claude 总指挥 + Gemini 创意顾问 + GPT 硬核工程师/守门员。大方案双模型各出一份再合并 → 你拍板 → 设计稿请 Gemini 审文案 → 派活给 GPT 写后端 → Claude 验收 → GPT 审查（最多 2 轮）→ 自动检查 → 汇报",
+  "askUser": true,
+  "roles": {
+    "lead": "claude",
+    "creative": "agy",
+    "backend": "codex",
+    "reviewer": "codex"
+  },
+  "steps": [
+    {
+      "id": "understand",
+      "title": "主控：理解需求、查代码",
+      "role": "lead",
+      "prompt": [
+        "你是这个项目的总负责人。需求方只对你提需求，你负责理解、规划、派活、验收和汇报。",
+        "请先吃透下面的需求：阅读需求素材（如有，原型图逐张看），查看相关代码、配置、数据结构和现有测试，必要时查看项目文档。不要修改任何文件。",
+        "输出（Markdown，简洁）：",
+        "1. 需求理解：用需求方能看懂的话复述目标，指出模糊、没说完的地方并给出你的合理假设；",
+        "2. 现状：涉及哪些模块/文件/接口/数据，有哪些可复用的东西；",
+        "3. 约束与风险：兼容性、数据、权限、性能等；",
+        "4. 规模判断：小改动、几十行、和页面紧耦合的算小任务；涉及架构、多个模块、长期影响的算大方案。",
+        "最后一行必须单独写：规模：小任务 或 规模：大方案",
+        "",
+        "需求：",
+        "{{task}}"
+      ]
+    },
+    {
+      "id": "plans",
+      "title": "各出一份方案（大方案时）",
+      "type": "parallel",
+      "when": "has('understand', '规模：大方案')",
+      "steps": [
+        {
+          "id": "plan-claude",
+          "title": "Claude 出方案",
+          "role": "lead",
+          "prompt": [
+            "基于需求和你的需求理解，出一份完整的实施方案（Markdown）：目标与范围（做/不做）、整体设计、前端改动、后端改动、接口与数据结构、风险与回滚、测试与验收标准。不要修改任何文件。",
+            "",
+            "需求：{{task}}",
+            "",
+            "你的需求理解：",
+            "{{steps.understand.output}}"
+          ]
+        },
+        {
+          "id": "plan-gemini",
+          "title": "Gemini 独立出方案",
+          "role": "creative",
+          "ask": false,
+          "prompt": [
+            "请独立为下面的需求出一份实施方案（Markdown）：目标与范围、整体思路、前后端分别怎么做、用户体验上的亮点、风险与不确定点、验收标准。",
+            "可以多给创意，但每个关键判断请写明依据；不确定的地方标注\"待确认\"，不要编造项目里不存在的东西。不要修改任何文件。",
+            "",
+            "需求：",
+            "{{task}}"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "merge-plan",
+      "title": "逐条对比、合成一份",
+      "role": "lead",
+      "prompt": [
+        "请输出最终《实施方案》（Markdown），给需求方拍板用：先用 3~5 句话说清楚要做什么、对使用者有什么影响，再写目标与范围（做/不做）、整体设计、前端改动、后端改动、接口与数据结构、风险与回滚、测试与验收标准（可逐条测试）。",
+        "如果下面有两份方案（大方案）：逐条对比，甄别 Gemini 方案里\"听起来很厉害但其实不对\"的部分，然后合成一份，并在文末附\"## 采纳说明\"表格：条目 | 采纳自（Claude / Gemini / 合并）| 没采纳的为什么。",
+        "如果两份方案都是空的（小任务），直接基于需求理解写一份精简方案。",
+        "如果本需求不涉及前端界面，在文档开头单独写一行：无前端改动。不要修改任何文件。",
+        "",
+        "需求：{{task}}",
+        "需求理解：{{steps.understand.output}}",
+        "",
+        "Claude 方案：",
+        "{{steps.plan-claude.output}}",
+        "",
+        "Gemini 方案：",
+        "{{steps.plan-gemini.output}}",
+        "",
+        "需求方对上一版的修改意见（为空则忽略）：{{feedback}}"
+      ]
+    },
+    { "id": "gate-plan", "title": "你来拍板方案", "type": "approve", "review": "merge-plan" },
+    { "id": "save-plan", "title": "保存方案", "type": "write", "from": "merge-plan", "to": "docs/aiflow/PLAN.md", "artifact": "实施方案" },
+    {
+      "id": "design",
+      "title": "Claude 出设计稿",
+      "role": "lead",
+      "when": "!has('merge-plan', '无前端改动')",
+      "prompt": [
+        "根据 docs/aiflow/PLAN.md 和需求素材里的原型（如有，以原型为准），出一份前端设计稿（Markdown）：",
+        "页面与布局、组件清单、每个状态（空/加载/错误/无权限/成功）、交互流程与反馈、动效、视觉规范（沿用项目现有风格），以及界面上出现的全部文案（按钮、提示、报错、空状态），每条文案标编号。",
+        "不要修改任何文件。",
+        "",
+        "需求：{{task}}"
+      ]
+    },
+    {
+      "id": "design-review",
+      "title": "Gemini 审交互和文案",
+      "role": "creative",
+      "ask": false,
+      "when": "!has('merge-plan', '无前端改动')",
+      "prompt": [
+        "你是文案和交互顾问。下面是一份前端设计稿，请从使用者的角度审一遍：",
+        "1. 交互：哪里会让人困惑、多余的步骤、缺少的反馈或状态；",
+        "2. 文案：逐条给出更清楚、更友好的写法（标明原编号），语气保持一致；",
+        "3. 你觉得能明显提升体验的小点子（最多 5 条）。",
+        "每条建议标优先级（高/中/低）并说明理由。只提建议，不要修改任何文件。",
+        "",
+        "设计稿：",
+        "{{steps.design.output}}"
+      ]
+    },
+    {
+      "id": "design-final",
+      "title": "Claude 取舍、改稿",
+      "role": "lead",
+      "when": "!has('merge-plan', '无前端改动')",
+      "prompt": [
+        "下面是你的设计稿和 Gemini 的审阅建议。请逐条核实建议：采纳真正改善体验的，拒绝不符合需求、和项目风格冲突或不可行的。",
+        "输出改好的最终设计稿（Markdown），文末附\"## 建议取舍\"表格：建议 | 采纳/不采纳 | 理由。不要修改任何文件。",
+        "",
+        "设计稿：",
+        "{{steps.design.output}}",
+        "",
+        "Gemini 的建议：",
+        "{{steps.design-review.output}}"
+      ]
+    },
+    { "id": "save-design", "title": "保存设计稿", "type": "write", "from": "design-final", "to": "docs/aiflow/DESIGN.md", "artifact": "设计稿", "when": "!has('merge-plan', '无前端改动')" },
+    {
+      "id": "dispatch",
+      "title": "定接口和验收标准（派活单）",
+      "role": "lead",
+      "prompt": [
+        "根据 docs/aiflow/PLAN.md 决定后端怎么分工。派活规则：",
+        "- 小修改、几十行代码、和页面紧耦合的部分，你自己做；",
+        "- 只有接口已定型的独立后端模块、算法、数据处理、性能相关的成块工作，才派给 GPT 工程师。",
+        "如果不需要派活，第一行单独写：无需派活，然后简要说明你自己要做的后端改动和接口。",
+        "如果需要派活，输出一份《派活单》（Markdown），GPT 只会看这份文档和代码，所以要精确、无歧义：",
+        "背景（一两句）、要改/新建的文件范围、接口定义（路径、方法、请求/响应字段与类型、错误码）、数据结构与数据库变更、边界条件、验收标准（可直接写成测试用例的条目）、必须写的测试、明确不要做的事（不要改前端、不要改无关文件）。",
+        "前端会由你在另一个独立代码副本里同时开发，所以接口定义必须完整。不要修改任何文件。"
+      ]
+    },
+    { "id": "save-dispatch", "title": "保存派活单", "type": "write", "from": "dispatch", "to": "docs/aiflow/TASK-backend.md", "artifact": "派活单", "when": "!has('dispatch', '无需派活')" },
+    {
+      "id": "build",
+      "title": "开发：GPT 写成块的后端，Claude 写前端（独立 worktree 并行）",
+      "type": "parallel",
+      "isolation": "worktree",
+      "steps": [
+        {
+          "id": "impl-backend",
+          "title": "GPT：写成块的后端",
+          "role": "backend",
+          "mode": "edit",
+          "timeoutMin": 90,
+          "when": "!has('dispatch', '无需派活')",
+          "prompt": [
+            "【后端任务】严格按照 docs/aiflow/TASK-backend.md（派活单）实现，背景见 docs/aiflow/PLAN.md。",
+            "要求：只改派活单范围内的文件，不要改前端；按验收标准写测试并运行通过；遵循项目现有代码风格。",
+            "如果派活单里有矛盾、遗漏或明显错误，不要硬做，先指出来。",
+            "完成后输出：改动文件列表、每条验收标准的完成情况、测试运行结果、与派活单不一致的地方。"
+          ]
+        },
+        {
+          "id": "impl-lead",
+          "title": "Claude：前端和紧耦合的小改动",
+          "role": "lead",
+          "mode": "edit",
+          "timeoutMin": 90,
+          "prompt": [
+            "【前端任务】按 docs/aiflow/PLAN.md 和 docs/aiflow/DESIGN.md（如有）完成前端和视觉、交互、动效，以及和页面紧耦合的小改动；文案以设计稿定稿为准。",
+            "如果 docs/aiflow/TASK-backend.md 不存在（无需派活），后端改动也由你完成；如果存在，后端由 GPT 在另一个代码副本里同时开发，你严格按其中的接口对接，不要改后端文件。",
+            "完成后输出：改动文件列表、关键实现说明、自测情况、未完成事项。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "accept",
+      "title": "Claude 验收：读改动、跑测试",
+      "role": "lead",
+      "mode": "edit",
+      "timeoutMin": 60,
+      "prompt": [
+        "前后端改动已经合并到当前工作区。你是验收负责人：",
+        "1. 用 git status / git diff 读全部改动，重点读 GPT 交付的后端，对照 docs/aiflow/TASK-backend.md 的验收标准逐条核对；",
+        "2. 运行项目的测试和本地启动检查，修复前后端对接问题和明显缺陷；",
+        "3. 对照 docs/aiflow/PLAN.md 检查同类场景是否补齐（比如列表加了筛选，导出是否也要支持）。",
+        "输出验收结论表：验收项 | 结果（通过/已修复/未通过）| 说明。"
+      ]
+    },
+    {
+      "id": "review-loop",
+      "title": "GPT 审查（最多 2 轮）",
+      "type": "loop",
+      "max": 2,
+      "until": "has('review', 'VERDICT: PASS')",
+      "steps": [
+        {
+          "id": "review",
+          "title": "GPT 代码审查",
+          "role": "reviewer",
+          "ask": false,
+          "artifact": "代码审查报告",
+          "prompt": [
+            "你是上线前的最后一道关。审查当前工作区的全部改动（git status、git diff，注意新文件），对照 docs/aiflow/PLAN.md。不要修改任何文件。",
+            "分两级：",
+            "【必须修复】只放高危问题：可能丢数据、算错钱、越权/权限漏洞、安全漏洞、会导致线上事故的 bug；",
+            "【建议】其他所有问题，仅供参考。",
+            "每条写清：文件和位置、问题、为什么是这个级别、修改建议。不要把风格偏好放进【必须修复】。",
+            "最后一行必须是 VERDICT: PASS（没有必须修复的问题）或 VERDICT: FAIL。"
+          ]
+        },
+        {
+          "id": "fix",
+          "title": "Claude 修复高危问题",
+          "role": "lead",
+          "mode": "edit",
+          "when": "has('review', 'VERDICT: FAIL')",
+          "prompt": [
+            "下面是 GPT 的审查结果（第 {{iter}} 轮）。逐条核实并修复【必须修复】的问题；【建议】由你判断，值得改且风险小的顺手改掉。",
+            "完成后列出每条的处理结果（已修复 / 不认同及理由）。",
+            "",
+            "{{steps.review.output}}"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "checks",
+      "title": "自动检查",
+      "role": "lead",
+      "mode": "edit",
+      "timeoutMin": 45,
+      "prompt": [
+        "运行项目已有的全部自动检查（lint、类型检查、单元测试、构建，以 package.json / Makefile / CI 配置为准），修复失败项，直到全部通过或确认是本次改动之外的既有问题。",
+        "另外：本次审查和验收中发现的问题，如果能用测试或检查规则防止以后再犯，补上对应的测试；不确定的列为建议。",
+        "输出：每项检查的命令和结果、修复了什么、新增了哪些防复发测试。"
+      ]
+    },
+    {
+      "id": "ship",
+      "title": "开合并请求（需你确认）",
+      "role": "lead",
+      "mode": "edit",
+      "when": "confirm:要提交代码并创建合并请求吗？（会新建分支并推送）",
+      "prompt": [
+        "把当前工作区的改动提交到一个新分支（名称 aiflow/<简短英文描述>），不要提交 .aiflow/ 目录，提交信息用项目惯例的格式写清做了什么。",
+        "推送到远程；如果安装了 gh（GitHub）或 glab（GitLab），创建合并请求，描述里附上 docs/aiflow/PLAN.md 的摘要和验收情况。",
+        "不要合并、不要强推、不要改动主分支。输出分支名和合并请求链接。"
+      ]
+    },
+    {
+      "id": "release",
+      "title": "发布并核实线上（需你确认）",
+      "role": "lead",
+      "mode": "edit",
+      "when": "confirm:要按项目文档发布并核实线上吗？",
+      "prompt": [
+        "只按项目文档（README、CLAUDE.md、AGENTS.md、docs、CI 配置）里明确写出的发布流程操作；文档里没有写明的，不要自己猜测发布命令，直接停止并说明。",
+        "发布后按文档核实线上：服务是否正常、本次功能是否生效、日志有无新增报错。",
+        "输出：执行了哪些命令、核实结果、需要人工确认的事项。"
+      ]
+    },
+    {
+      "id": "report",
+      "title": "交付汇报",
+      "role": "lead",
+      "artifact": "交付汇报",
+      "prompt": [
+        "给需求方写一份简短的交付汇报（Markdown），用他能看懂的话：",
+        "1. 先说结果：做成了什么、对使用者有什么影响（3~5 句）；",
+        "2. 改了什么（按功能，不按文件）；",
+        "3. 验收与审查情况，遗留问题和风险；",
+        "4. 需要他决定或手动处理的事项（没有就写\"无\"）；",
+        "5. 建议固化成自动化检查的坑（如有）。",
+        "可参考：docs/aiflow/PLAN.md、git diff，以及：",
+        "验收：{{steps.accept.output}}",
+        "审查：{{steps.review.output}}",
+        "自动检查：{{steps.checks.output}}"
+      ]
+    }
+  ]
+}

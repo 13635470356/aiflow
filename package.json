@@ -1,0 +1,36 @@
+{
+  "name": "aiflow",
+  "productName": "aiflow",
+  "version": "0.5.0",
+  "description": "本机 AI 编程 CLI 编排器：识别 claude/codex/agy/gemini/opencode，按自定义工作流分工协作（命令行 + 桌面版）",
+  "type": "module",
+  "main": "desktop/main.js",
+  "bin": { "aiflow": "bin/aiflow.js" },
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis portable --x64",
+    "dist:dir": "electron-builder --win dir --x64"
+  },
+  "engines": { "node": ">=18" },
+  "devDependencies": {
+    "electron": "^39.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "dev.aiflow.desktop",
+    "productName": "aiflow",
+    "artifactName": "aiflow-${version}-${arch}-${target}.${ext}",
+    "directories": { "output": "release" },
+    "files": ["bin/**", "src/**", "desktop/**", "workflows/**", "package.json"],
+    "asarUnpack": ["workflows/**"],
+    "win": { "target": ["nsis", "portable"], "icon": "desktop/icon.png" },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "aiflow"
+    }
+  },
+  "license": "MIT"
+}
